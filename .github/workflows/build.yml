@@ -19,9 +19,6 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Preparar Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Descargar Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
