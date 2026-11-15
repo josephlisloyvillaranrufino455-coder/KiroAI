@@ -5,32 +5,28 @@ import android.accessibilityservice.GestureDescription;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
-import android.graphics.Color;
+import android.graphics.Bitmap;
 import android.graphics.Path;
-import android.graphics.PixelFormat;
 import android.graphics.Rect;
-import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
-import android.os.Handler;
-import android.os.Looper;
-import android.provider.Settings;
+import android.util.Base64;
 import android.util.DisplayMetrics;
-import android.view.Gravity;
-import android.view.View;
-import android.view.WindowManager;
+import android.view.Display;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
+import java.io.ByteArrayOutputStream;
 import java.util.List;
 
 public class KiroManosService extends AccessibilityService {
 
     public static KiroManosService instancia;
-    private WindowManager windowManager;
-    private View cuerpoFlotante;
-    private WindowManager.LayoutParams paramsFlotante;
-    private Handler handler = new Handler(Looper.getMainLooper());
     private int anchoPantalla = 1220;
     private int altoPantalla = 2712;
+
+    public interface CallbackOjos {
+        void onImagenLista(String base64Jpeg);
+        void onErrorOjos(String motivo);
+    }
 
     @Override
     protected void onServiceConnected() {
@@ -41,66 +37,104 @@ public class KiroManosService extends AccessibilityService {
         anchoPantalla = metrics.widthPixels;
         altoPantalla = metrics.heightPixels;
 
-        crearCuerpoFlotante();
+        if (KiroServicioContinuo.instancia != null) {
+            KiroServicioContinuo.instancia.moverBolitaFlotante(anchoPantalla / 2, altoPantalla / 2, true);
+        }
     }
 
-    private void crearCuerpoFlotante() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+    public String leerPantallaInstantaneo() {
+        AccessibilityNodeInfo raiz = getRootInActiveWindow();
+        if (raiz == null) return "Pantalla sin elementos legibles.";
+        StringBuilder sb = new StringBuilder();
+        extraerTextoPantalla(raiz, sb, 0);
+        String resultado = sb.toString().trim();
+        if (resultado.length() > 1500) {
+            resultado = resultado.substring(0, 1500);
+        }
+        return resultado.isEmpty() ? "Pantalla solo con graficos o video." : resultado;
+    }
+
+    private void extraerTextoPantalla(AccessibilityNodeInfo nodo, StringBuilder sb, int nivel) {
+        if (nodo == null || nivel > 12 || sb.length() > 1600) return;
+
+        CharSequence texto = nodo.getText();
+        CharSequence desc = nodo.getContentDescription();
+
+        if (texto != null && texto.toString().trim().length() > 0) {
+            sb.append("[").append(texto.toString().trim()).append("] ");
+        } else if (desc != null && desc.toString().trim().length() > 0) {
+            sb.append("(Icono: ").append(desc.toString().trim()).append(") ");
+        }
+
+        for (int i = 0; i < nodo.getChildCount(); i++) {
+            extraerTextoPantalla(nodo.getChild(i), sb, nivel + 1);
+        }
+    }
+
+    public void mirarMiniaturaRapida(CallbackOjos callback) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            callback.onErrorOjos("Android incompatible.");
             return;
         }
-        try {
-            windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
-            cuerpoFlotante = new View(this);
+        if (KiroServicioContinuo.instancia != null) {
+            KiroServicioContinuo.instancia.moverBolitaFlotante(anchoPantalla / 2, 180, true);
+        }
+        takeScreenshot(Display.DEFAULT_DISPLAY, getMainExecutor(), new TakeScreenshotCallback() {
+            @Override
+            public void onSuccess(ScreenshotResult resultado) {
+                try {
+                    Bitmap hardwareBmp = Bitmap.wrapHardwareBuffer(resultado.getHardwareBuffer(), resultado.getColorSpace());
+                    if (hardwareBmp == null) {
+                        callback.onErrorOjos("Error leyendo cuadro.");
+                        return;
+                    }
+                    Bitmap softBmp = hardwareBmp.copy(Bitmap.Config.ARGB_8888, false);
+                    hardwareBmp.recycle();
+                    resultado.getHardwareBuffer().close();
 
-            GradientDrawable forma = new GradientDrawable();
-            forma.setShape(GradientDrawable.OVAL);
-            forma.setColor(Color.parseColor("#CC00E5FF"));
-            forma.setStroke(4, Color.WHITE);
-            cuerpoFlotante.setBackground(forma);
+                    int nuevoAncho = 360;
+                    int nuevoAlto = (softBmp.getHeight() * nuevoAncho) / softBmp.getWidth();
+                    Bitmap reducida = Bitmap.createScaledBitmap(softBmp, nuevoAncho, nuevoAlto, true);
+                    softBmp.recycle();
 
-            int tipoVentana = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                    ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                    : WindowManager.LayoutParams.TYPE_PHONE;
+                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                    reducida.compress(Bitmap.CompressFormat.JPEG, 55, baos);
+                    reducida.recycle();
 
-            paramsFlotante = new WindowManager.LayoutParams(
-                    46, 46,
-                    tipoVentana,
-                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                            | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-                            | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-                    PixelFormat.TRANSLUCENT
-            );
-            paramsFlotante.gravity = Gravity.TOP | Gravity.START;
-            paramsFlotante.x = anchoPantalla - 90;
-            paramsFlotante.y = 220;
-
-            windowManager.addView(cuerpoFlotante, paramsFlotante);
-        } catch (Exception ignored) {}
-    }
-
-    public void moverCuerpoFlotante(int x, int y, boolean accionActiva) {
-        handler.post(() -> {
-            if (cuerpoFlotante == null || windowManager == null || paramsFlotante == null) return;
-            try {
-                GradientDrawable forma = (GradientDrawable) cuerpoFlotante.getBackground();
-                forma.setColor(Color.parseColor(accionActiva ? "#EE00FF88" : "#CC00E5FF"));
-                paramsFlotante.x = Math.max(0, x - 23);
-                paramsFlotante.y = Math.max(0, y - 23);
-                windowManager.updateViewLayout(cuerpoFlotante, paramsFlotante);
-
-                if (accionActiva) {
-                    handler.postDelayed(() -> moverCuerpoFlotante(anchoPantalla - 90, 220, false), 900);
+                    String base64 = Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP);
+                    callback.onImagenLista(base64);
+                } catch (Exception e) {
+                    callback.onErrorOjos(e.getMessage());
                 }
-            } catch (Exception ignored) {}
+            }
+
+            @Override
+            public void onFailure(int errorCode) {
+                callback.onErrorOjos("Fallo captura: " + errorCode);
+            }
         });
     }
     public void tocarCoordenadasRapido(int x, int y) {
-        moverCuerpoFlotante(x, y, true);
-        Path trazo = new Path();
-        trazo.moveTo(x, y);
-        GestureDescription.StrokeDescription toque = new GestureDescription.StrokeDescription(trazo, 0, 35);
-        GestureDescription gesto = new GestureDescription.Builder().addStroke(toque).build();
-        dispatchGesture(gesto, null, null);
+        tocarMultiplesSimultaneo(new int[][]{{x, y}});
+    }
+
+    public void tocarMultiplesSimultaneo(int[][] puntos) {
+        if (puntos == null || puntos.length == 0) return;
+        GestureDescription.Builder builder = new GestureDescription.Builder();
+        int limite = Math.min(puntos.length, 5);
+
+        for (int i = 0; i < limite; i++) {
+            int px = puntos[i][0];
+            int py = puntos[i][1];
+            if (i == 0 && KiroServicioContinuo.instancia != null) {
+                KiroServicioContinuo.instancia.moverBolitaFlotante(px, py, true);
+            }
+            Path trazo = new Path();
+            trazo.moveTo(px, py);
+            GestureDescription.StrokeDescription dedo = new GestureDescription.StrokeDescription(trazo, 0, 15);
+            builder.addStroke(dedo);
+        }
+        dispatchGesture(builder.build(), null, null);
     }
 
     public void deslizarPantalla(String direccion) {
@@ -122,11 +156,13 @@ public class KiroManosService extends AccessibilityService {
             x2 = (int) (anchoPantalla * 0.80);
         }
 
-        moverCuerpoFlotante(x1, y1, true);
+        if (KiroServicioContinuo.instancia != null) {
+            KiroServicioContinuo.instancia.moverBolitaFlotante(x1, y1, true);
+        }
         Path trazo = new Path();
         trazo.moveTo(x1, y1);
         trazo.lineTo(x2, y2);
-        GestureDescription.StrokeDescription desliz = new GestureDescription.StrokeDescription(trazo, 0, 140);
+        GestureDescription.StrokeDescription desliz = new GestureDescription.StrokeDescription(trazo, 0, 100);
         GestureDescription gesto = new GestureDescription.Builder().addStroke(desliz).build();
         dispatchGesture(gesto, null, null);
     }
@@ -205,11 +241,6 @@ public class KiroManosService extends AccessibilityService {
     @Override
     public void onDestroy() {
         instancia = null;
-        if (cuerpoFlotante != null && windowManager != null) {
-            try {
-                windowManager.removeView(cuerpoFlotante);
-            } catch (Exception ignored) {}
-        }
         super.onDestroy();
     }
 }
