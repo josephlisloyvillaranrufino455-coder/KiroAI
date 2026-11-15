@@ -241,3 +241,68 @@ public class MainActivity extends AppCompatActivity {
 
                 JSONArray mensajes = new JSONArray();
                 mensajes.put(sistema);
+                            mensajes.put(mensajeUsuario);
+
+                JSONObject cuerpo = new JSONObject();
+                cuerpo.put("model", "openai/gpt-oss-120b");
+                cuerpo.put("messages", mensajes);
+
+                OutputStream os = conn.getOutputStream();
+                os.write(cuerpo.toString().getBytes("UTF-8"));
+                os.close();
+
+                int code = conn.getResponseCode();
+                BufferedReader br;
+                if (code >= 200 && code < 300) {
+                    br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
+                } else {
+                    br = new BufferedReader(new InputStreamReader(conn.getErrorStream(), "UTF-8"));
+                }
+
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) {
+                    sb.append(line);
+                }
+                br.close();
+
+                String respuestaCruda = sb.toString();
+                runOnUiThread(() -> {
+                    if (code >= 200 && code < 300) {
+                        try {
+                            JSONObject json = new JSONObject(respuestaCruda);
+                            String mensaje = json.getJSONArray("choices")
+                                    .getJSONObject(0)
+                                    .getJSONObject("message")
+                                    .getString("content");
+                            textoRespuesta.setText("Tu: \"" + mensajeUsuarioTexto + "\"\n\nKiroAI: " + mensaje);
+                            hablar(mensaje);
+                        } catch (Exception e) {
+                            textoRespuesta.setText("Error al leer respuesta: " + e.getMessage());
+                        }
+                    } else {
+                        textoRespuesta.setText("Error HTTP " + code + ":\n" + respuestaCruda);
+                    }
+                });
+
+            } catch (Exception e) {
+                runOnUiThread(() -> textoRespuesta.setText("Error de red: " + e.getMessage()));
+            }
+        }).start();
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (vozKiro != null) {
+            vozKiro.stop();
+            vozKiro.shutdown();
+        }
+        if (oidoKiro != null) {
+            oidoKiro.destroy();
+        }
+        if (audioManager != null) {
+            audioManager.setMode(AudioManager.MODE_NORMAL);
+        }
+        super.onDestroy();
+    }
+}
