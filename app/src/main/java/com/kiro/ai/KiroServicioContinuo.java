@@ -627,3 +627,27 @@ public class KiroServicioContinuo extends Service {
 
     private void crearCanalNotificacion() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel canal = new NotificationChannel(CANAL_ID, "Kirito Servicio Continuo", NotificationManager.IMPORTANCE_LOW);
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            if (manager != null) manager.createNotificationChannel(canal);
+        }
+    }
+
+    private Notification construirNotificacion(String texto) {
+        Notification.Builder builder = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                ? new Notification.Builder(this, CANAL_ID) : new Notification.Builder(this);
+        return builder.setContentTitle("KiritoAI Activo").setContentText(texto)
+                .setSmallIcon(android.R.drawable.ic_btn_speak_now).setOngoing(true).build();
+    }
+
+    @Override
+    public void onDestroy() {
+        apagarTotalmente();
+        super.onDestroy();
+    }
+
+    @Override
+    public IBinder onBind(Intent intent) {
+        return null;
+    }
+}
