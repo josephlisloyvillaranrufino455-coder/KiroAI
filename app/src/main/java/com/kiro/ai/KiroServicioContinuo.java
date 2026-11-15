@@ -38,6 +38,9 @@ public class KiroServicioContinuo extends Service {
     private Handler handler = new Handler(Looper.getMainLooper());
     private float picoVozActual = 0f;
 
+    private String accionPendiente = "";
+    private String parametroPendiente = "";
+
     @Override
     public void onCreate() {
         super.onCreate();
@@ -58,16 +61,16 @@ public class KiroServicioContinuo extends Service {
                     @Override public void onStart(String utteranceId) {}
                     @Override public void onDone(String utteranceId) {
                         if (estaEncendido) {
-                            handler.postDelayed(() -> iniciarCicloEscucha(), 400);
+                            handler.postDelayed(() -> iniciarCicloEscucha(), 600);
                         }
                     }
                     @Override public void onError(String utteranceId) {
                         if (estaEncendido) {
-                            handler.postDelayed(() -> iniciarCicloEscucha(), 400);
+                            handler.postDelayed(() -> iniciarCicloEscucha(), 600);
                         }
                     }
                 });
-                hablar("Estoy despierto y listo. Cuando quieras hablar, solo dime.");
+                hablar("Estoy despierto con mis manos y mi cuerpo listos. Dime que necesitas.");
             }
         });
     }
@@ -112,7 +115,7 @@ public class KiroServicioContinuo extends Service {
                 @Override
                 public void onError(int error) {
                     if (estaEncendido) {
-                        handler.postDelayed(() -> iniciarCicloEscucha(), 600);
+                        handler.postDelayed(() -> iniciarCicloEscucha(), 1500);
                     }
                 }
 
@@ -124,7 +127,7 @@ public class KiroServicioContinuo extends Service {
                         String texto = matches.get(0).trim();
                         procesarEntradaVoz(texto);
                     } else {
-                        handler.postDelayed(() -> iniciarCicloEscucha(), 400);
+                        handler.postDelayed(() -> iniciarCicloEscucha(), 800);
                     }
                 }
 
@@ -136,27 +139,45 @@ public class KiroServicioContinuo extends Service {
             intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
             intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-PE");
             intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
+            intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 10000L);
+            intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 8000L);
+            intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 15000L);
             oido.startListening(intent);
 
         } catch (Exception e) {
             if (estaEncendido) {
-                handler.postDelayed(() -> iniciarCicloEscucha(), 1000);
+                handler.postDelayed(() -> iniciarCicloEscucha(), 1500);
             }
         }
     }
-
     private void procesarEntradaVoz(String texto) {
-        String limpio = texto.toLowerCase();
+        String limpio = texto.toLowerCase().trim();
 
         if (limpio.contains("apágate") || limpio.contains("apagate") || limpio.contains("kirito duerme")) {
             hablarYApagar("De acuerdo, me apago por completo. Aqui estare cuando me necesites.");
             return;
         }
 
+        if (!accionPendiente.isEmpty()) {
+            if (limpio.equals("sí") || limpio.equals("si") || limpio.contains("hazlo") || limpio.contains("adelante") || limpio.contains("claro") || limpio.contains("por favor")) {
+                String acc = accionPendiente;
+                String param = parametroPendiente;
+                accionPendiente = "";
+                parametroPendiente = "";
+                ejecutarManoConfirmada(acc, param);
+                return;
+            } else if (limpio.equals("no") || limpio.contains("cancela") || limpio.contains("no lo hagas")) {
+                accionPendiente = "";
+                parametroPendiente = "";
+                hablar("Entendido, no lo hare. ¿Quieres que te pregunte mas tarde o pasamos a otra cosa?");
+                return;
+            }
+        }
+
         if (audioManager != null && audioManager.isMusicActive()) {
             float huellaUsuario = memoria.getFloat("huella_voz_rms", 5.0f);
             if (picoVozActual < (huellaUsuario - 2.5f)) {
-                handler.postDelayed(() -> iniciarCicloEscucha(), 400);
+                handler.postDelayed(() -> iniciarCicloEscucha(), 800);
                 return;
             }
         }
@@ -169,6 +190,29 @@ public class KiroServicioContinuo extends Service {
 
         actualizarNotificacion("Pensando: " + texto);
         consultarCerebro(apiKey, texto);
+    }
+
+    private void ejecutarManoConfirmada(String accion, String param) {
+        if (KiroManosService.instancia == null) {
+            hablar("Aun no has activado mi permiso de manos en Accesibilidad.");
+            return;
+        }
+        if ("ABRIR".equals(accion)) {
+            boolean ok = KiroManosService.instancia.abrirAplicacionPorNombre(param);
+            hablar(ok ? "Abriendo " + param + "." : "No encontre la aplicacion " + param + ".");
+        } else if ("TOCAR".equals(accion)) {
+            boolean ok = KiroManosService.instancia.tocarElementoOIcono(param);
+            hablar(ok ? "Listo." : "No veo " + param + " en esta pantalla.");
+        } else if ("DESLIZAR".equals(accion)) {
+            KiroManosService.instancia.deslizarPantalla(param);
+            hablar("Deslizando hacia " + param + ".");
+        } else if ("ATRAS".equals(accion)) {
+            KiroManosService.instancia.presionarAtras();
+            hablar("Volviendo atras.");
+        } else if ("INICIO".equals(accion)) {
+            KiroManosService.instancia.irInicio();
+            hablar("Yendo al inicio.");
+        }
     }
 
     private void consultarCerebro(String apiKey, String mensajeUsuarioTexto) {
@@ -186,7 +230,7 @@ public class KiroServicioContinuo extends Service {
 
                 JSONObject sistema = new JSONObject();
                 sistema.put("role", "system");
-                sistema.put("content", "Eres Kirito, un asistente personal educado, culto, humano y respetuoso. Responde de forma breve, natural y amable. Siempre pide permiso antes de ejecutar acciones.");
+                sistema.put("content", "Eres Kirito, un asistente personal educado, culto y humano. Siempre pide permiso antes de tocar la pantalla o abrir una app. Si el usuario pide hacer una accion en el telefono, responde pidiendo permiso en una frase corta y al final agrega exactamente una etiqueta oculta: [ACCION:ABRIR:nombre], [ACCION:TOCAR:texto_o_icono], [ACCION:DESLIZAR:abajo/arriba/izquierda/derecha], [ACCION:ATRAS:nada] o [ACCION:INICIO:nada].");
 
                 JSONObject mensajeUsuario = new JSONObject();
                 mensajeUsuario.put("role", "user");
@@ -229,6 +273,21 @@ public class KiroServicioContinuo extends Service {
                                     .getJSONObject(0)
                                     .getJSONObject("message")
                                     .getString("content");
+
+                            if (mensaje.contains("[ACCION:")) {
+                                int inicio = mensaje.indexOf("[ACCION:");
+                                int fin = mensaje.indexOf("]", inicio);
+                                if (fin > inicio) {
+                                    String etiqueta = mensaje.substring(inicio + 8, fin);
+                                    String[] partes = etiqueta.split(":", 2);
+                                    if (partes.length == 2) {
+                                        accionPendiente = partes[0].trim();
+                                        parametroPendiente = partes[1].trim();
+                                    }
+                                    mensaje = mensaje.substring(0, inicio).trim();
+                                }
+                            }
+
                             actualizarNotificacion("Kirito activo");
                             hablar(mensaje);
                         } catch (Exception e) {
