@@ -592,6 +592,13 @@ public class KiroServicioContinuo extends Service {
             }
         }).start();
     }
+       public void hablarAvisoDirecto(String texto) {
+        handler.post(() -> {
+            if (estaEncendido && voz != null) {
+                voz.speak(texto, TextToSpeech.QUEUE_FLUSH, null, "KiroContinuo");
+            }
+        });
+    }
 
     private void hablar(String texto) {
         if (!estaEncendido || voz == null) return;
