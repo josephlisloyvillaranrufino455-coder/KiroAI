@@ -38,7 +38,8 @@ public class KiroManosService extends AccessibilityService {
         altoPantalla = metrics.heightPixels;
 
         if (KiroServicioContinuo.instancia != null) {
-            KiroServicioContinuo.instancia.moverBolitaFlotante(anchoPantalla / 2, altoPantalla / 2, true);
+            KiroServicioContinuo.instancia.moverBolitaFlotante(anchoPantalla / 2, altoPantalla / 2, true);            KiroServicioContinuo.instancia.hablarAvisoDirecto("Ojos y manos conectados.");
+
         }
     }
 
