@@ -92,10 +92,11 @@ public class KiroServicioContinuo extends Service {
                         if (estaEncendido) handler.postDelayed(() -> iniciarCicloEscucha(), 500);
                     }
                 });
-                hablar("Estoy despierto. Soy tus manos y tus ojos. Arrastra mi bolita o dime multibolitas cuando quieras.");
+                hablar("Estoy despierto. Soy tus manos y tus ojos. Dime que necesitas.");
             }
         });
     }
+
     private void limpiarBolitas() {
         if (windowManager != null) {
             for (TextView b : listaBolitas) {
@@ -105,7 +106,6 @@ public class KiroServicioContinuo extends Service {
         listaBolitas.clear();
         listaParams.clear();
     }
-
     private void crearBolitasEnPantalla(int cantidad) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) return;
         handler.post(() -> {
@@ -118,7 +118,6 @@ public class KiroServicioContinuo extends Service {
 
             int total = Math.max(1, Math.min(cantidad, 5));
             for (int i = 0; i < total; i++) {
-                final int indice = i;
                 TextView bolita = new TextView(this);
                 bolita.setText(total > 1 ? String.valueOf(i + 1) : "");
                 bolita.setTextColor(Color.WHITE);
@@ -218,11 +217,11 @@ public class KiroServicioContinuo extends Service {
 
     private void dispararBolitasAhora() {
         if (KiroManosService.instancia == null || listaParams.isEmpty()) return;
-        int[][] coords = new int[listaParams.size()][2];
+        int[][] coords = new int[listaParams.size()];
         for (int i = 0; i < listaParams.size(); i++) {
             WindowManager.LayoutParams p = listaParams.get(i);
-            coords[i][0] = p.x + (tamanoBolitaPx / 2);
-            coords[i][1] = p.y + (tamanoBolitaPx / 2);
+            coords[i] = p.x + (tamanoBolitaPx / 2);
+            coords[i] = p.y + (tamanoBolitaPx / 2);
         }
         KiroManosService.instancia.tocarMultiplesSimultaneo(coords);
     }
@@ -246,8 +245,8 @@ public class KiroServicioContinuo extends Service {
             for (int i = 0; i < pares.length && i < listaParams.size(); i++) {
                 String[] xy = pares[i].split(",");
                 if (xy.length == 2) {
-                    listaParams.get(i).x = Integer.parseInt(xy[0]);
-                    listaParams.get(i).y = Integer.parseInt(xy[1]);
+                    listaParams.get(i).x = Integer.parseInt(xy);
+                    listaParams.get(i).y = Integer.parseInt(xy);
                     try { windowManager.updateViewLayout(listaBolitas.get(i), listaParams.get(i)); } catch (Exception ignored) {}
                 }
             }
@@ -333,19 +332,19 @@ public class KiroServicioContinuo extends Service {
         if (limpio.contains("multibolitas") || limpio.contains("multi bolitas")) {
             int cant = limpio.contains("4") || limpio.contains("cuatro") ? 4 : (limpio.contains("5") || limpio.contains("cinco") ? 5 : 3);
             crearBolitasEnPantalla(cant);
-            hablar("Listo, puse " + cant + " bolitas en pantalla. Arrastralas a los botones y dime listo cuando termines.");
+            hablar("Listo, puse " + cant + " bolitas en pantalla. Arrastralas y dime listo.");
             return;
         }
 
         if (limpio.equals("listo") || limpio.contains("fijar bolitas") || limpio.contains("fija las bolitas")) {
             fijarBolitasTransparentes(true);
-            hablar("Bolitas fijadas y transparentes al tacto. Solo dime presiona o pared cuando quieras disparar.");
+            hablar("Bolitas fijadas y transparentes al tacto.");
             return;
         }
 
         if (limpio.contains("mover bolitas") || limpio.contains("desbloquear bolitas")) {
             fijarBolitasTransparentes(false);
-            hablar("Ya puedes arrastrar las bolitas otra vez.");
+            hablar("Ya puedes mover las bolitas.");
             return;
         }
 
@@ -359,13 +358,13 @@ public class KiroServicioContinuo extends Service {
         if (limpio.startsWith("activa ")) {
             String nombre = limpio.replace("activa ", "").trim();
             if (cargarPerfilBolitas(nombre)) {
-                hablar("Posicion " + nombre + " cargada y lista.");
+                hablar("Posicion " + nombre + " cargada.");
                 return;
             }
         }
 
         if (!accionPendiente.isEmpty()) {
-            if (limpio.equals("sí") || limpio.equals("si") || limpio.contains("hazlo") || limpio.contains("adelante") || limpio.contains("claro")) {
+            if (limpio.contains("sí") || limpio.contains("si") || limpio.contains("hazlo") || limpio.contains("adelante") || limpio.contains("claro") || limpio.contains("abre") || limpio.contains("desliza")) {
                 String acc = accionPendiente;
                 String param = parametroPendiente;
                 accionPendiente = "";
@@ -378,6 +377,38 @@ public class KiroServicioContinuo extends Service {
                 hablar("Entendido, no lo hare. ¿Quieres que te pregunte mas tarde o pasamos a otra cosa?");
                 return;
             }
+        }
+
+        if (limpio.contains("desliza")) {
+            String dir = limpio.contains("arriba") ? "arriba" : (limpio.contains("derecha") ? "derecha" : (limpio.contains("izquierda") ? "izquierda" : "abajo"));
+            accionPendiente = "DESLIZAR";
+            parametroPendiente = dir;
+            hablar("¿Me das permiso para deslizar hacia " + dir + "?");
+            return;
+        }
+
+        if (limpio.startsWith("abre ") || limpio.contains("abrir ")) {
+            String app = limpio.replace("puedes abrir ", "").replace("abre ", "").replace("abrir ", "").trim();
+            if (!app.isEmpty()) {
+                accionPendiente = "ABRIR";
+                parametroPendiente = app;
+                hablar("¿Quieres que abra " + app + " ahora?");
+                return;
+            }
+        }
+
+        if (limpio.contains("vuelve atrás") || limpio.contains("regresa") || limpio.equals("atrás")) {
+            accionPendiente = "ATRAS";
+            parametroPendiente = "nada";
+            hablar("¿Me das permiso para volver atras?");
+            return;
+        }
+
+        if (limpio.contains("ve al inicio") || limpio.contains("pantalla principal")) {
+            accionPendiente = "INICIO";
+            parametroPendiente = "nada";
+            hablar("¿Me das permiso para ir al inicio?");
+            return;
         }
 
         if (audioManager != null && audioManager.isMusicActive()) {
@@ -394,7 +425,7 @@ public class KiroServicioContinuo extends Service {
             return;
         }
 
-        if (limpio.contains("qué ves") || limpio.contains("que ves") || limpio.contains("mira la pantalla") || limpio.contains("ver mi pantalla") || limpio.contains("ves mi pantalla") || limpio.contains("qué hay en")) {
+        if (limpio.contains("qué ves") || limpio.contains("que ves") || limpio.contains("mira") || limpio.contains("pantalla") || limpio.contains("ves")) {
             mirarYResponder(apiKey, texto);
             return;
         }
@@ -402,7 +433,6 @@ public class KiroServicioContinuo extends Service {
         String lecturaRapida = (KiroManosService.instancia != null) ? KiroManosService.instancia.leerPantallaInstantaneo() : "";
         consultarCerebro(apiKey, texto, lecturaRapida, null);
     }
-
     private void mirarYResponder(String apiKey, String preguntaUsuario) {
         if (KiroManosService.instancia == null) {
             hablar("Activa KiroAI en Accesibilidad para abrir mis ojos. Te llevo a los ajustes ahora.");
@@ -467,7 +497,7 @@ public class KiroServicioContinuo extends Service {
 
                 JSONObject sistema = new JSONObject();
                 sistema.put("role", "system");
-                sistema.put("content", "Eres Kirito, el asistente integrado dentro de este celular Android. Eres las manos y los ojos del usuario: puedes ver la pantalla, presionar botones o iconos, deslizar en cualquier direccion y abrir aplicaciones. JAMAS digas que solo puedes responder mensajes. Tus recuerdos guardados son: [" + recuerdos + "]. Lo que ves ahora mismo en pantalla es: [" + lecturaPantalla + "]. Si el usuario te ensena algo importante o menciona una fecha clave, agrega al final [MEMORIA:dato_a_recordar]. Cuando el usuario pida una accion fisica en el celular, pide permiso en una frase corta y agrega obligatoriamente al final una de estas etiquetas: [ACCION:ABRIR:nombre], [ACCION:TOCAR:boton], [ACCION:DESLIZAR:abajo/arriba/izquierda/derecha], [ACCION:ATRAS:nada] o [ACCION:INICIO:nada].");
+                sistema.put("content", "Eres Kirito, el asistente integrado dentro de este celular Android. Eres las manos y los ojos del usuario: puedes ver la pantalla, presionar botones o iconos, deslizar en cualquier direccion y abrir aplicaciones. JAMAS digas que solo puedes responder mensajes. Tus recuerdos guardados son: [" + recuerdos + "]. Lo que ves ahora mismo en pantalla es: [" + lecturaPantalla + "]. Si el usuario te ensena algo importante o menciona una fecha clave, agrega al final [MEMORIA:dato_a_recordar]. Cuando el usuario pida tocar un boton en pantalla, pide permiso en una frase corta y agrega obligatoriamente al final: [ACCION:TOCAR:boton].");
 
                 JSONObject mensajeUsuario = new JSONObject();
                 mensajeUsuario.put("role", "user");
@@ -542,8 +572,8 @@ public class KiroServicioContinuo extends Service {
                                     String etiqueta = mensaje.substring(inicio + 8, fin);
                                     String[] partes = etiqueta.split(":", 2);
                                     if (partes.length == 2) {
-                                        accionPendiente = partes[0].trim();
-                                        parametroPendiente = partes[1].trim();
+                                        accionPendiente = partes.trim();
+                                        parametroPendiente = partes.trim();
                                     }
                                     mensaje = mensaje.substring(0, inicio).trim();
                                 }
@@ -597,27 +627,3 @@ public class KiroServicioContinuo extends Service {
 
     private void crearCanalNotificacion() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel canal = new NotificationChannel(CANAL_ID, "Kirito Servicio Continuo", NotificationManager.IMPORTANCE_LOW);
-            NotificationManager manager = getSystemService(NotificationManager.class);
-            if (manager != null) manager.createNotificationChannel(canal);
-        }
-    }
-
-    private Notification construirNotificacion(String texto) {
-        Notification.Builder builder = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                ? new Notification.Builder(this, CANAL_ID) : new Notification.Builder(this);
-        return builder.setContentTitle("KiritoAI Activo").setContentText(texto)
-                .setSmallIcon(android.R.drawable.ic_btn_speak_now).setOngoing(true).build();
-    }
-
-    @Override
-    public void onDestroy() {
-        apagarTotalmente();
-        super.onDestroy();
-    }
-
-    @Override
-    public IBinder onBind(Intent intent) {
-        return null;
-    }
-}
