@@ -6,6 +6,8 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
@@ -30,6 +32,7 @@ public class MainActivity extends AppCompatActivity {
     private SharedPreferences memoria;
     private TextToSpeech vozGuia;
     private SpeechRecognizer grabadorHuella;
+    private Handler handler = new Handler(Looper.getMainLooper());
 
     private int pasoHuella = 0;
     private float sumaRms = 0f;
@@ -99,6 +102,7 @@ public class MainActivity extends AppCompatActivity {
         }
         textoGuiaVoz.setPadding(0, 15, 0, 25);
         textoGuiaVoz.setTextSize(15);
+        
         Button btnEncenderContinuo = new Button(this);
         btnEncenderContinuo.setText("3. ENCENDER KIRITO (MODO CONTINUO)");
         btnEncenderContinuo.setOnClickListener(v -> {
@@ -154,7 +158,7 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         if (!permisos.isEmpty()) {
-            ActivityCompat.requestPermissions(this, permisos.toArray(new String[0]), 200);
+            ActivityCompat.requestPermissions(this, permisos.toArray(new String), 200);
         }
     }
 
@@ -174,35 +178,43 @@ public class MainActivity extends AppCompatActivity {
         }
 
         String frase = frasesSugeridas[pasoHuella];
-        textoGuiaVoz.setText("Frase " + (pasoHuella + 1) + " de 3.\nDi con tu voz normal:\n\"" + frase + "\"");
+        textoGuiaVoz.setText("Preparando microfono...");
 
-        if (grabadorHuella != null) grabadorHuella.destroy();
-        picoMaximoPaso = 0f;
-        grabadorHuella = SpeechRecognizer.createSpeechRecognizer(this);
-        grabadorHuella.setRecognitionListener(new RecognitionListener() {
-            @Override public void onReadyForSpeech(Bundle params) {}
-            @Override public void onBeginningOfSpeech() {}
-            @Override public void onRmsChanged(float rmsdB) {
-                if (rmsdB > picoMaximoPaso) picoMaximoPaso = rmsdB;
-            }
-            @Override public void onBufferReceived(byte[] buffer) {}
-            @Override public void onEndOfSpeech() {}
-            @Override public void onError(int error) {
-                textoGuiaVoz.setText("No se escucho bien la frase " + (pasoHuella + 1) + ". Toca el boton 2 para reintentar.");
-            }
-            @Override public void onResults(Bundle results) {
-                sumaRms += (picoMaximoPaso > 0f ? picoMaximoPaso : 5.0f);
-                pasoHuella++;
-                grabarSiguienteFrase();
-            }
-            @Override public void onPartialResults(Bundle partialResults) {}
-            @Override public void onEvent(int eventType, Bundle params) {}
-        });
+        if (grabadorHuella != null) {
+            grabadorHuella.destroy();
+            grabadorHuella = null;
+        }
 
-        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-PE");
-        grabadorHuella.startListening(intent);
+        handler.postDelayed(() -> {
+            textoGuiaVoz.setText("Frase " + (pasoHuella + 1) + " de 3. Di ahora:\n\"" + frase + "\"");
+            picoMaximoPaso = 0f;
+            grabadorHuella = SpeechRecognizer.createSpeechRecognizer(this);
+            grabadorHuella.setRecognitionListener(new RecognitionListener() {
+                @Override public void onReadyForSpeech(Bundle params) {}
+                @Override public void onBeginningOfSpeech() {}
+                @Override public void onRmsChanged(float rmsdB) {
+                    if (rmsdB > picoMaximoPaso) picoMaximoPaso = rmsdB;
+                }
+                @Override public void onBufferReceived(byte[] buffer) {}
+                @Override public void onEndOfSpeech() {}
+                @Override public void onError(int error) {
+                    textoGuiaVoz.setText("No se escucho la frase " + (pasoHuella + 1) + ". Toca el boton 2 para reintentar.");
+                }
+                @Override public void onResults(Bundle results) {
+                    sumaRms += (picoMaximoPaso > 0f ? picoMaximoPaso : 5.0f);
+                    pasoHuella++;
+                    grabarSiguienteFrase();
+                }
+                @Override public void onPartialResults(Bundle partialResults) {}
+                @Override public void onEvent(int eventType, Bundle params) {}
+            });
+
+            Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-PE");
+            intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 5000L);
+            grabadorHuella.startListening(intent);
+        }, 800);
     }
 
     private void iniciarServicioContinuo() {
@@ -224,6 +236,7 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        handler.removeCallbacksAndMessages(null);
         if (vozGuia != null) vozGuia.shutdown();
         if (grabadorHuella != null) grabadorHuella.destroy();
         super.onDestroy();
