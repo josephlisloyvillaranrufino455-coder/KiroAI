@@ -4,10 +4,12 @@ import android.Manifest;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.Settings;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
@@ -85,8 +87,26 @@ public class MainActivity extends AppCompatActivity {
             hablarGuia("Clave guardada en mi memoria.");
         });
 
+        Button btnPermisoFlotante = new Button(this);
+        btnPermisoFlotante.setText("2. ACTIVAR CUERPO FLOTANTE");
+        btnPermisoFlotante.setOnClickListener(v -> {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+                Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + getPackageName()));
+                startActivity(intent);
+            } else {
+                textoGuiaVoz.setText("Cuerpo flotante ya esta autorizado.");
+            }
+        });
+
+        Button btnPermisoManos = new Button(this);
+        btnPermisoManos.setText("3. ACTIVAR MANOS (ACCESIBILIDAD)");
+        btnPermisoManos.setOnClickListener(v -> {
+            Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
+            startActivity(intent);
+        });
         Button btnGrabarHuella = new Button(this);
-        btnGrabarHuella.setText("2. GRABAR MI HUELLA DE VOZ (3 FRASES)");
+        btnGrabarHuella.setText("4. GRABAR MI HUELLA DE VOZ (3 FRASES)");
         btnGrabarHuella.setOnClickListener(v -> {
             pasoHuella = 0;
             sumaRms = 0f;
@@ -98,13 +118,13 @@ public class MainActivity extends AppCompatActivity {
         if (huellaActual > 0f) {
             textoGuiaVoz.setText("Huella de voz registrada (Nivel: " + String.format(Locale.US, "%.1f", huellaActual) + ").");
         } else {
-            textoGuiaVoz.setText("Aun no has grabado tu huella de voz. Toca el boton 2.");
+            textoGuiaVoz.setText("Listo para configurar permisos o huella de voz.");
         }
         textoGuiaVoz.setPadding(0, 15, 0, 25);
         textoGuiaVoz.setTextSize(15);
-        
+
         Button btnEncenderContinuo = new Button(this);
-        btnEncenderContinuo.setText("3. ENCENDER KIRITO (MODO CONTINUO)");
+        btnEncenderContinuo.setText("5. ENCENDER KIRITO (MODO CONTINUO)");
         btnEncenderContinuo.setOnClickListener(v -> {
             String clave = cajaClave.getText().toString().trim();
             if (clave.isEmpty()) {
@@ -128,6 +148,8 @@ public class MainActivity extends AppCompatActivity {
         layout.addView(infoPantalla);
         layout.addView(cajaClave);
         layout.addView(btnGuardarClave);
+        layout.addView(btnPermisoFlotante);
+        layout.addView(btnPermisoManos);
         layout.addView(btnGrabarHuella);
         layout.addView(textoGuiaVoz);
         layout.addView(btnEncenderContinuo);
@@ -173,7 +195,7 @@ public class MainActivity extends AppCompatActivity {
             float promedio = sumaRms / frasesSugeridas.length;
             memoria.edit().putFloat("huella_voz_rms", promedio).apply();
             textoGuiaVoz.setText("Huella de voz guardada con exito (Nivel: " + String.format(Locale.US, "%.1f", promedio) + ").");
-            hablarGuia("Perfecto, ya reconozco tu tono de voz. Ahora puedes encender el modo continuo.");
+            hablarGuia("Perfecto, ya reconozco tu tono de voz.");
             return;
         }
 
@@ -198,7 +220,7 @@ public class MainActivity extends AppCompatActivity {
                 @Override public void onBufferReceived(byte[] buffer) {}
                 @Override public void onEndOfSpeech() {}
                 @Override public void onError(int error) {
-                    textoGuiaVoz.setText("No se escucho la frase " + (pasoHuella + 1) + ". Toca el boton 2 para reintentar.");
+                    textoGuiaVoz.setText("No se escucho la frase " + (pasoHuella + 1) + ". Toca el boton 4 para reintentar.");
                 }
                 @Override public void onResults(Bundle results) {
                     sumaRms += (picoMaximoPaso > 0f ? picoMaximoPaso : 5.0f);
