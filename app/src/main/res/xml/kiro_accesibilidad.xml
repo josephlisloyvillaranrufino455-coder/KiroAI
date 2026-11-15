@@ -5,5 +5,5 @@
     android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows|flagReportViewIds"
     android:canPerformGestures="true"
     android:canRetrieveWindowContent="true"
-    android:description="Manos y asistencia visual de KiritoAI"
+    android:description="@string/desc_manos"
     android:notificationTimeout="50" />
