@@ -4,7 +4,7 @@ import android.Manifest;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
-import android.media.AudioManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
@@ -19,33 +19,32 @@ import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
-import org.json.JSONArray;
-import org.json.JSONObject;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
 
-    private boolean kiroActivo = true;
     private TextView textoEstado;
-    private TextView textoRespuesta;
+    private TextView textoGuiaVoz;
     private EditText cajaClave;
     private SharedPreferences memoria;
-    private TextToSpeech vozKiro;
-    private SpeechRecognizer oidoKiro;
-    private AudioManager audioManager;
+    private TextToSpeech vozGuia;
+    private SpeechRecognizer grabadorHuella;
+
+    private int pasoHuella = 0;
+    private float sumaRms = 0f;
+    private float picoMaximoPaso = 0f;
+    private final String[] frasesSugeridas = {
+        "Hola Kirito, esta es mi voz normal.",
+        "Kirito, escucha cuando te hablo suave.",
+        "Listo Kirito, recuerda siempre mi voz."
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         memoria = getSharedPreferences("KiroMemoria", MODE_PRIVATE);
-        audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
 
         DisplayMetrics metrics = new DisplayMetrics();
         getWindowManager().getDefaultDisplay().getRealMetrics(metrics);
@@ -59,154 +58,143 @@ public class MainActivity extends AppCompatActivity {
         layout.setPadding(40, 50, 40, 50);
 
         TextView titulo = new TextView(this);
-        titulo.setText("KiroAI - Nucleo Central");
+        titulo.setText("KiritoAI - Control Central");
         titulo.setTextSize(22);
 
         TextView infoPantalla = new TextView(this);
-        infoPantalla.setText("Pantalla calibrada: " + ancho + "x" + alto + " px (Densidad: " + densidad + ")");
-        infoPantalla.setPadding(0, 15, 0, 25);
-
-        Button btnApagado = new Button(this);
-        btnApagado.setText("APAGAR KIROAI (EMERGENCIA)");
-        btnApagado.setOnClickListener(v -> {
-            kiroActivo = !kiroActivo;
-            if (kiroActivo) {
-                btnApagado.setText("APAGAR KIROAI (EMERGENCIA)");
-                textoEstado.setText("Estado: ENCENDIDO");
-                hablar("Sistema encendido y listo para ayudarte.");
-            } else {
-                btnApagado.setText("ENCENDER KIROAI");
-                textoEstado.setText("Estado: APAGADO TOTAL");
-                textoRespuesta.setText("KiroAI detenido por seguridad.");
-                if (vozKiro != null) vozKiro.stop();
-                if (oidoKiro != null) oidoKiro.cancel();
-            }
-        });
-
-        textoEstado = new TextView(this);
-        textoEstado.setText("Estado: ENCENDIDO");
-        textoEstado.setPadding(0, 15, 0, 25);
+        infoPantalla.setText("Pantalla: " + ancho + "x" + alto + " px | Densidad: " + densidad);
+        infoPantalla.setPadding(0, 10, 0, 20);
 
         cajaClave = new EditText(this);
         cajaClave.setHint("Pega aqui tu clave Groq (gsk_...)");
-        String claveGuardada = memoria.getString("api_key", "");
-        if (!claveGuardada.isEmpty()) {
-            cajaClave.setText(claveGuardada);
+        cajaClave.setText(memoria.getString("api_key", ""));
+
+        Button btnGuardarClave = new Button(this);
+        btnGuardarClave.setText("1. GUARDAR CLAVE EN MEMORIA");
+        btnGuardarClave.setOnClickListener(v -> {
+            String clave = cajaClave.getText().toString().trim();
+            if (clave.isEmpty()) {
+                textoGuiaVoz.setText("Pega tu clave primero.");
+                return;
+            }
+            memoria.edit().putString("api_key", clave).apply();
+            textoGuiaVoz.setText("Clave guardada correctamente.");
+            hablarGuia("Clave guardada en mi memoria.");
+        });
+
+        Button btnGrabarHuella = new Button(this);
+        btnGrabarHuella.setText("2. GRABAR MI HUELLA DE VOZ (3 FRASES)");
+        btnGrabarHuella.setOnClickListener(v -> {
+            pasoHuella = 0;
+            sumaRms = 0f;
+            grabarSiguienteFrase();
+        });
+
+        textoGuiaVoz = new TextView(this);
+        float huellaActual = memoria.getFloat("huella_voz_rms", 0f);
+        if (huellaActual > 0f) {
+            textoGuiaVoz.setText("Huella de voz registrada (Nivel: " + String.format(Locale.US, "%.1f", huellaActual) + ").");
+        } else {
+            textoGuiaVoz.setText("Aun no has grabado tu huella de voz. Toca el boton 2.");
         }
-
-        Button btnGuardar = new Button(this);
-        btnGuardar.setText("GUARDAR CLAVE Y PROBAR VOZ");
-        btnGuardar.setOnClickListener(v -> {
+        textoGuiaVoz.setPadding(0, 15, 0, 25);
+        textoGuiaVoz.setTextSize(15);
+        Button btnEncenderContinuo = new Button(this);
+        btnEncenderContinuo.setText("3. ENCENDER KIRITO (MODO CONTINUO)");
+        btnEncenderContinuo.setOnClickListener(v -> {
             String clave = cajaClave.getText().toString().trim();
             if (clave.isEmpty()) {
-                textoRespuesta.setText("Pega tu clave API primero.");
+                textoEstado.setText("Error: Guarda tu clave primero.");
                 return;
             }
             memoria.edit().putString("api_key", clave).apply();
-            textoRespuesta.setText("Clave guardada en memoria. Probando cerebro y voz...");
-            enviarAlCerebro(clave, "Hola Kiro, presentate brevemente de forma educada y natural.");
+            iniciarServicioContinuo();
         });
 
-        Button btnHablar = new Button(this);
-        btnHablar.setText("HABLAR CON KIROAI (MICROFONO)");
-        btnHablar.setOnClickListener(v -> {
-            if (!kiroActivo) {
-                textoRespuesta.setText("Enciende KiroAI primero.");
-                return;
-            }
-            String clave = cajaClave.getText().toString().trim();
-            if (clave.isEmpty()) {
-                textoRespuesta.setText("Guarda tu clave API primero.");
-                return;
-            }
-            memoria.edit().putString("api_key", clave).apply();
-            iniciarEscuchaLimpia(clave);
-        });
+        Button btnApagarTotal = new Button(this);
+        btnApagarTotal.setText("APAGAR KIRITO POR COMPLETO");
+        btnApagarTotal.setOnClickListener(v -> detenerServicioContinuo());
 
-        textoRespuesta = new TextView(this);
-        textoRespuesta.setText("Esperando orden...");
-        textoRespuesta.setPadding(0, 30, 0, 30);
-        textoRespuesta.setTextSize(16);
+        textoEstado = new TextView(this);
+        textoEstado.setText(KiroServicioContinuo.estaEncendido ? "Estado: ENCENDIDO EN SEGUNDO PLANO" : "Estado: APAGADO");
+        textoEstado.setPadding(0, 25, 0, 25);
+        textoEstado.setTextSize(16);
 
         layout.addView(titulo);
         layout.addView(infoPantalla);
-        layout.addView(btnApagado);
-        layout.addView(textoEstado);
         layout.addView(cajaClave);
-        layout.addView(btnGuardar);
-        layout.addView(btnHablar);
-        layout.addView(textoRespuesta);
+        layout.addView(btnGuardarClave);
+        layout.addView(btnGrabarHuella);
+        layout.addView(textoGuiaVoz);
+        layout.addView(btnEncenderContinuo);
+        layout.addView(btnApagarTotal);
+        layout.addView(textoEstado);
         scroll.addView(layout);
         setContentView(scroll);
 
-        inicializarVoz();
-        pedirPermisoMicrofono();
+        vozGuia = new TextToSpeech(this, status -> {
+            if (status == TextToSpeech.SUCCESS) {
+                vozGuia.setLanguage(new Locale("es", "ES"));
+                vozGuia.setPitch(0.95f);
+                vozGuia.setSpeechRate(1.02f);
+            }
+        });
+
+        pedirPermisos();
     }
 
-    private void pedirPermisoMicrofono() {
+    private void pedirPermisos() {
+        ArrayList<String> permisos = new ArrayList<>();
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.RECORD_AUDIO}, 101);
+            permisos.add(Manifest.permission.RECORD_AUDIO);
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                permisos.add(Manifest.permission.POST_NOTIFICATIONS);
+            }
+        }
+        if (!permisos.isEmpty()) {
+            ActivityCompat.requestPermissions(this, permisos.toArray(new String[0]), 200);
         }
     }
 
-    private void inicializarVoz() {
-        vozKiro = new TextToSpeech(this, status -> {
-            if (status == TextToSpeech.SUCCESS) {
-                vozKiro.setLanguage(new Locale("es", "ES"));
-                vozKiro.setPitch(0.95f);
-                vozKiro.setSpeechRate(1.02f);
-            }
-        });
+    private void hablarGuia(String texto) {
+        if (vozGuia != null) {
+            vozGuia.speak(texto, TextToSpeech.QUEUE_FLUSH, null, "GuiaHuella");
+        }
     }
 
-    private void hablar(String texto) {
-        if (!kiroActivo || vozKiro == null) return;
-        vozKiro.speak(texto, TextToSpeech.QUEUE_FLUSH, null, "KiroVoz");
-    }
-
-    private void iniciarEscuchaLimpia(String apiKey) {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            pedirPermisoMicrofono();
+    private void grabarSiguienteFrase() {
+        if (pasoHuella >= frasesSugeridas.length) {
+            float promedio = sumaRms / frasesSugeridas.length;
+            memoria.edit().putFloat("huella_voz_rms", promedio).apply();
+            textoGuiaVoz.setText("Huella de voz guardada con exito (Nivel: " + String.format(Locale.US, "%.1f", promedio) + ").");
+            hablarGuia("Perfecto, ya reconozco tu tono de voz. Ahora puedes encender el modo continuo.");
             return;
         }
 
-        if (vozKiro != null && vozKiro.isSpeaking()) {
-            vozKiro.stop();
-        }
+        String frase = frasesSugeridas[pasoHuella];
+        textoGuiaVoz.setText("Frase " + (pasoHuella + 1) + " de 3.\nDi con tu voz normal:\n\"" + frase + "\"");
 
-        if (audioManager != null) {
-            audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
-        }
-
-        if (oidoKiro != null) {
-            oidoKiro.destroy();
-        }
-
-        oidoKiro = SpeechRecognizer.createSpeechRecognizer(this);
-        oidoKiro.setRecognitionListener(new RecognitionListener() {
-            @Override public void onReadyForSpeech(Bundle params) { textoRespuesta.setText("Escuchando tu voz... Habla ahora."); }
-            @Override public void onBeginningOfSpeech() { textoRespuesta.setText("Te escucho..."); }
-            @Override public void onRmsChanged(float rmsdB) {}
+        if (grabadorHuella != null) grabadorHuella.destroy();
+        picoMaximoPaso = 0f;
+        grabadorHuella = SpeechRecognizer.createSpeechRecognizer(this);
+        grabadorHuella.setRecognitionListener(new RecognitionListener() {
+            @Override public void onReadyForSpeech(Bundle params) {}
+            @Override public void onBeginningOfSpeech() {}
+            @Override public void onRmsChanged(float rmsdB) {
+                if (rmsdB > picoMaximoPaso) picoMaximoPaso = rmsdB;
+            }
             @Override public void onBufferReceived(byte[] buffer) {}
-            @Override public void onEndOfSpeech() { textoRespuesta.setText("Procesando lo que dijiste..."); }
-
-            @Override
-            public void onError(int error) {
-                if (audioManager != null) audioManager.setMode(AudioManager.MODE_NORMAL);
-                textoRespuesta.setText("No pude escucharte bien (Codigo " + error + "). Toca el boton e intentalo de nuevo.");
+            @Override public void onEndOfSpeech() {}
+            @Override public void onError(int error) {
+                textoGuiaVoz.setText("No se escucho bien la frase " + (pasoHuella + 1) + ". Toca el boton 2 para reintentar.");
             }
-
-            @Override
-            public void onResults(Bundle results) {
-                if (audioManager != null) audioManager.setMode(AudioManager.MODE_NORMAL);
-                ArrayList<String> matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-                if (matches != null && !matches.isEmpty()) {
-                    String loQueDijiste = matches.get(0);
-                    textoRespuesta.setText("Tu dijiste: \"" + loQueDijiste + "\"\n\nPensando respuesta...");
-                    enviarAlCerebro(apiKey, loQueDijiste);
-                }
+            @Override public void onResults(Bundle results) {
+                sumaRms += (picoMaximoPaso > 0f ? picoMaximoPaso : 5.0f);
+                pasoHuella++;
+                grabarSiguienteFrase();
             }
-
             @Override public void onPartialResults(Bundle partialResults) {}
             @Override public void onEvent(int eventType, Bundle params) {}
         });
@@ -214,95 +202,30 @@ public class MainActivity extends AppCompatActivity {
         Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-PE");
-        intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
-        oidoKiro.startListening(intent);
+        grabadorHuella.startListening(intent);
     }
 
-    private void enviarAlCerebro(String apiKey, String mensajeUsuarioTexto) {
-        new Thread(() -> {
-            try {
-                String host = "https://" + "api.groq" + ".com";
-                String ruta = "/openai/v1/chat/completions";
-                URL url = new URL(host + ruta);
+    private void iniciarServicioContinuo() {
+        Intent servicio = new Intent(this, KiroServicioContinuo.class);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(servicio);
+        } else {
+            startService(servicio);
+        }
+        textoEstado.setText("Estado: ENCENDIDO (Escuchando continuo hasta que lo apagues)");
+    }
 
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("POST");
-                conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-                conn.setRequestProperty("Authorization", "Bearer " + apiKey);
-                conn.setDoOutput(true);
-
-                JSONObject sistema = new JSONObject();
-                sistema.put("role", "system");
-                sistema.put("content", "Eres KiroAI, un asistente personal educado, culto, humano y respetuoso. Responde de forma natural, clara y breve, pidiendo permiso antes de hacer cualquier accion.");
-
-                JSONObject mensajeUsuario = new JSONObject();
-                mensajeUsuario.put("role", "user");
-                mensajeUsuario.put("content", mensajeUsuarioTexto);
-
-                JSONArray mensajes = new JSONArray();
-                mensajes.put(sistema);
-                            mensajes.put(mensajeUsuario);
-
-                JSONObject cuerpo = new JSONObject();
-                cuerpo.put("model", "openai/gpt-oss-120b");
-                cuerpo.put("messages", mensajes);
-
-                OutputStream os = conn.getOutputStream();
-                os.write(cuerpo.toString().getBytes("UTF-8"));
-                os.close();
-
-                int code = conn.getResponseCode();
-                BufferedReader br;
-                if (code >= 200 && code < 300) {
-                    br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
-                } else {
-                    br = new BufferedReader(new InputStreamReader(conn.getErrorStream(), "UTF-8"));
-                }
-
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = br.readLine()) != null) {
-                    sb.append(line);
-                }
-                br.close();
-
-                String respuestaCruda = sb.toString();
-                runOnUiThread(() -> {
-                    if (code >= 200 && code < 300) {
-                        try {
-                            JSONObject json = new JSONObject(respuestaCruda);
-                            String mensaje = json.getJSONArray("choices")
-                                    .getJSONObject(0)
-                                    .getJSONObject("message")
-                                    .getString("content");
-                            textoRespuesta.setText("Tu: \"" + mensajeUsuarioTexto + "\"\n\nKiroAI: " + mensaje);
-                            hablar(mensaje);
-                        } catch (Exception e) {
-                            textoRespuesta.setText("Error al leer respuesta: " + e.getMessage());
-                        }
-                    } else {
-                        textoRespuesta.setText("Error HTTP " + code + ":\n" + respuestaCruda);
-                    }
-                });
-
-            } catch (Exception e) {
-                runOnUiThread(() -> textoRespuesta.setText("Error de red: " + e.getMessage()));
-            }
-        }).start();
+    private void detenerServicioContinuo() {
+        Intent servicio = new Intent(this, KiroServicioContinuo.class);
+        servicio.setAction("APAGAR_KIRO");
+        startService(servicio);
+        textoEstado.setText("Estado: APAGADO TOTAL");
     }
 
     @Override
     protected void onDestroy() {
-        if (vozKiro != null) {
-            vozKiro.stop();
-            vozKiro.shutdown();
-        }
-        if (oidoKiro != null) {
-            oidoKiro.destroy();
-        }
-        if (audioManager != null) {
-            audioManager.setMode(AudioManager.MODE_NORMAL);
-        }
+        if (vozGuia != null) vozGuia.shutdown();
+        if (grabadorHuella != null) grabadorHuella.destroy();
         super.onDestroy();
     }
 }
