@@ -35,6 +35,7 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 
@@ -239,14 +240,14 @@ public class KiroServicioContinuo extends Service {
     private boolean cargarPerfilBolitas(String nombrePerfil) {
         String guardado = memoria.getString("perfil_bolitas_" + nombrePerfil, "");
         if (guardado.isEmpty()) return false;
-        String[] pares = guardado.split(";");
-        crearBolitasEnPantalla(pares.length);
+        List<String> pares = Arrays.asList(guardado.split(";"));
+        crearBolitasEnPantalla(pares.size());
         handler.postDelayed(() -> {
-            for (int i = 0; i < pares.length && i < listaParams.size(); i++) {
-                String[] xy = pares[i].split(",");
-                if (xy.length == 2) {
-                    listaParams.get(i).x = Integer.parseInt(xy);
-                    listaParams.get(i).y = Integer.parseInt(xy);
+            for (int i = 0; i < pares.size() && i < listaParams.size(); i++) {
+                List<String> xy = Arrays.asList(pares.get(i).split(","));
+                if (xy.size() == 2) {
+                    listaParams.get(i).x = Integer.parseInt(xy.get(0));
+                    listaParams.get(i).y = Integer.parseInt(xy.get(1));
                     try { windowManager.updateViewLayout(listaBolitas.get(i), listaParams.get(i)); } catch (Exception ignored) {}
                 }
             }
@@ -362,7 +363,6 @@ public class KiroServicioContinuo extends Service {
                 return;
             }
         }
-
         if (!accionPendiente.isEmpty()) {
             if (limpio.contains("sí") || limpio.contains("si") || limpio.contains("hazlo") || limpio.contains("adelante") || limpio.contains("claro") || limpio.contains("abre") || limpio.contains("desliza")) {
                 String acc = accionPendiente;
@@ -433,6 +433,7 @@ public class KiroServicioContinuo extends Service {
         String lecturaRapida = (KiroManosService.instancia != null) ? KiroManosService.instancia.leerPantallaInstantaneo() : "";
         consultarCerebro(apiKey, texto, lecturaRapida, null);
     }
+
     private void mirarYResponder(String apiKey, String preguntaUsuario) {
         if (KiroManosService.instancia == null) {
             hablar("Activa KiroAI en Accesibilidad para abrir mis ojos. Te llevo a los ajustes ahora.");
@@ -479,7 +480,6 @@ public class KiroServicioContinuo extends Service {
             hablar("Yendo al inicio.");
         }
     }
-
     private void consultarCerebro(String apiKey, String mensajeUsuarioTexto, String lecturaPantalla, String imagenBase64) {
         new Thread(() -> {
             try {
@@ -570,10 +570,10 @@ public class KiroServicioContinuo extends Service {
                                 int fin = mensaje.indexOf("]", inicio);
                                 if (fin > inicio) {
                                     String etiqueta = mensaje.substring(inicio + 8, fin);
-                                    String[] partes = etiqueta.split(":", 2);
-                                    if (partes.length == 2) {
-                                        accionPendiente = partes.trim();
-                                        parametroPendiente = partes.trim();
+                                    List<String> partes = Arrays.asList(etiqueta.split(":", 2));
+                                    if (partes.size() == 2) {
+                                        accionPendiente = partes.get(0).trim();
+                                        parametroPendiente = partes.get(1).trim();
                                     }
                                     mensaje = mensaje.substring(0, inicio).trim();
                                 }
