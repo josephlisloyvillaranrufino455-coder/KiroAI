@@ -65,10 +65,10 @@ public class MainActivity extends AppCompatActivity {
         textoEstado.setPadding(0, 15, 0, 25);
 
         cajaClave = new EditText(this);
-        cajaClave.setHint("Pega aqui tu clave API (AQ.Ab8...)");
+        cajaClave.setHint("Pega aqui tu clave Groq (gsk_...)");
 
         Button btnProbar = new Button(this);
-        btnProbar.setText("PROBAR CEREBRO GEMINI");
+        btnProbar.setText("PROBAR CEREBRO KIROAI");
         btnProbar.setOnClickListener(v -> {
             if (!kiroActivo) {
                 textoRespuesta.setText("Enciende KiroAI primero.");
@@ -79,7 +79,7 @@ public class MainActivity extends AppCompatActivity {
                 textoRespuesta.setText("Pega tu clave API arriba primero.");
                 return;
             }
-            textoRespuesta.setText("Conectando con el cerebro de Gemini...");
+            textoRespuesta.setText("Conectando con el cerebro de KiroAI...");
             probarConexionCerebro(clave);
         });
 
@@ -102,30 +102,26 @@ public class MainActivity extends AppCompatActivity {
     private void probarConexionCerebro(String apiKey) {
         new Thread(() -> {
             try {
-                String host = "https://" + "aiplatform" + ".googleapis.com";
-                String ruta = "/v1/publishers/google/models/gemini-2.5-flash:generateContent?key=" + apiKey;
+                String host = "https://" + "api.groq" + ".com";
+                String ruta = "/openai/v1/chat/completions";
                 URL url = new URL(host + ruta);
 
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
                 conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+                conn.setRequestProperty("Authorization", "Bearer " + apiKey);
                 conn.setDoOutput(true);
 
-                JSONObject parteTexto = new JSONObject();
-                parteTexto.put("text", "Hola KiroAI, responde en una frase corta confirmando que tu cerebro esta conectado y listo.");
+                JSONObject mensajeUsuario = new JSONObject();
+                mensajeUsuario.put("role", "user");
+                mensajeUsuario.put("content", "Hola KiroAI, responde en una frase corta confirmando que tu cerebro esta conectado y listo.");
 
-                JSONArray partes = new JSONArray();
-                partes.put(parteTexto);
-
-                JSONObject contenido = new JSONObject();
-                contenido.put("role", "user");
-                contenido.put("parts", partes);
-
-                JSONArray contenidos = new JSONArray();
-                contenidos.put(contenido);
+                JSONArray mensajes = new JSONArray();
+                mensajes.put(mensajeUsuario);
 
                 JSONObject cuerpo = new JSONObject();
-                cuerpo.put("contents", contenidos);
+                cuerpo.put("model", "llama-3.3-70b-versatile");
+                cuerpo.put("messages", mensajes);
 
                 OutputStream os = conn.getOutputStream();
                 os.write(cuerpo.toString().getBytes("UTF-8"));
@@ -151,12 +147,10 @@ public class MainActivity extends AppCompatActivity {
                     if (code >= 200 && code < 300) {
                         try {
                             JSONObject json = new JSONObject(respuestaCruda);
-                            String mensaje = json.getJSONArray("candidates")
+                            String mensaje = json.getJSONArray("choices")
                                     .getJSONObject(0)
-                                    .getJSONObject("content")
-                                    .getJSONArray("parts")
-                                    .getJSONObject(0)
-                                    .getString("text");
+                                    .getJSONObject("message")
+                                    .getString("content");
                             textoRespuesta.setText("EXITO CEREBRO CONECTADO:\n\n" + mensaje);
                         } catch (Exception e) {
                             textoRespuesta.setText("Conectado (Codigo " + code + "):\n" + respuestaCruda);
