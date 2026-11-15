@@ -216,16 +216,16 @@ public class KiroServicioContinuo extends Service {
         });
     }
 
-    private void dispararBolitasAhora() {
+        private void dispararBolitasAhora() {
         if (KiroManosService.instancia == null || listaParams.isEmpty()) return;
-        int[][] coords = new int[listaParams.size()];
         for (int i = 0; i < listaParams.size(); i++) {
             WindowManager.LayoutParams p = listaParams.get(i);
-            coords[i] = p.x + (tamanoBolitaPx / 2);
-            coords[i] = p.y + (tamanoBolitaPx / 2);
+            int cx = p.x + (tamanoBolitaPx / 2);
+            int cy = p.y + (tamanoBolitaPx / 2);
+            KiroManosService.instancia.tocarCoordenadasRapido(cx, cy);
         }
-        KiroManosService.instancia.tocarMultiplesSimultaneo(coords);
     }
+
 
     private void guardarPerfilBolitas(String nombrePerfil) {
         if (listaParams.isEmpty()) return;
