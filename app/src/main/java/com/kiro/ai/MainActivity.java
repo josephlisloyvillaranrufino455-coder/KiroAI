@@ -158,7 +158,7 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         if (!permisos.isEmpty()) {
-            ActivityCompat.requestPermissions(this, permisos.toArray(new String), 200);
+            ActivityCompat.requestPermissions(this, permisos.toArray(new String[0]), 200);
         }
     }
 
