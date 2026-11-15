@@ -120,7 +120,7 @@ public class MainActivity extends AppCompatActivity {
                 mensajes.put(mensajeUsuario);
 
                 JSONObject cuerpo = new JSONObject();
-                cuerpo.put("model", "llama-3.3-70b-versatile");
+                cuerpo.put("model", "openai/gpt-oss-120b");
                 cuerpo.put("messages", mensajes);
 
                 OutputStream os = conn.getOutputStream();
